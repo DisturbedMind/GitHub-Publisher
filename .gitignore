@@ -1,0 +1,13 @@
+
+# Local generated folders
+__pycache__/
+work/
+outputs/
+.codex-git-backups/
+
+# Local backup files
+README.backup-*.md
+
+# Python cache
+*.pyc
+*.pyo
