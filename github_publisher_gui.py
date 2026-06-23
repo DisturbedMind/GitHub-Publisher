@@ -205,44 +205,63 @@ class GitHubPublisher(tk.Tk):
 
         actions = ttk.LabelFrame(container, text="Publish Actions", style="Card.TLabelframe", padding=12)
         actions.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-        actions.columnconfigure(0, weight=1)
+        actions.columnconfigure(1, weight=1)
 
         self.state_label = ttk.Label(actions, textvariable=self.status_summary, style="Muted.TLabel")
-        self.state_label.grid(row=0, column=0, rowspan=2, sticky="w")
+        self.state_label.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 16), pady=(4, 0))
 
-        ttk.Button(actions, text="1. Initialize Git", style="Soft.TButton", command=self.initialize_repo).grid(
-            row=0, column=1, padx=(8, 0)
+        normal_group = ttk.Frame(actions)
+        normal_group.grid(row=0, column=1, sticky="ew")
+        normal_group.columnconfigure(6, weight=1)
+        ttk.Label(normal_group, text="Normal Flow", style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
         )
-        ttk.Button(actions, text="2. Set Remote", style="Soft.TButton", command=self.set_remote).grid(
-            row=0, column=2, padx=(8, 0)
+        ttk.Button(normal_group, text="1. Initialize Git", style="Soft.TButton", command=self.initialize_repo).grid(
+            row=0, column=1, sticky="ew", padx=(0, 8)
         )
-        ttk.Button(actions, text="3. Pull from GitHub", style="Soft.TButton", command=self.pull_changes).grid(
-            row=0, column=3, padx=(8, 0)
+        ttk.Button(normal_group, text="2. Set Remote", style="Soft.TButton", command=self.set_remote).grid(
+            row=0, column=2, sticky="ew", padx=(0, 8)
+        )
+        ttk.Button(normal_group, text="3. Pull from GitHub", style="Soft.TButton", command=self.pull_changes).grid(
+            row=0, column=3, sticky="ew", padx=(0, 8)
+        )
+        ttk.Button(normal_group, text="4. Commit Changes", style="Soft.TButton", command=self.commit_changes).grid(
+            row=0, column=4, sticky="ew", padx=(0, 8)
+        )
+        ttk.Button(normal_group, text="5. Push to GitHub", style="Soft.TButton", command=self.push_changes).grid(
+            row=0, column=5, sticky="ew", padx=(0, 8)
         )
         ttk.Button(
-            actions,
-            text="Fix A. First Upload Pull",
+            normal_group,
+            text="Commit + Push",
+            style="Soft.TButton",
+            command=self.commit_and_push,
+        ).grid(row=0, column=6, sticky="w")
+
+        fix_group = ttk.Frame(actions)
+        fix_group.grid(row=1, column=1, sticky="ew", pady=(8, 0))
+        fix_group.columnconfigure(4, weight=1)
+        ttk.Label(fix_group, text="Fix / Recovery", style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
+        ttk.Button(
+            fix_group,
+            text="First Upload Pull",
             style="Soft.TButton",
             command=self.pull_unrelated_changes,
-        ).grid(row=0, column=4, padx=(8, 0))
-        ttk.Button(actions, text="Fix B. Show Conflicts", style="Soft.TButton", command=self.show_conflicts).grid(
-            row=0, column=5, padx=(8, 0)
-        )
-        ttk.Button(actions, text="4. Commit Changes", style="Soft.TButton", command=self.commit_changes).grid(
-            row=1, column=2, padx=(8, 0), pady=(8, 0)
-        )
-        ttk.Button(actions, text="5. Push to GitHub", style="Soft.TButton", command=self.push_changes).grid(
-            row=1, column=3, padx=(8, 0), pady=(8, 0)
-        )
-        ttk.Button(actions, text="Shortcut 4+5. Commit + Push", style="Soft.TButton", command=self.commit_and_push).grid(
-            row=1, column=4, padx=(8, 0), pady=(8, 0)
-        )
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         ttk.Button(
-            actions,
-            text="Fix C. Continue After Fix",
+            fix_group,
+            text="Show Conflicts",
+            style="Soft.TButton",
+            command=self.show_conflicts,
+        ).grid(row=0, column=2, sticky="ew", padx=(0, 8))
+        ttk.Button(
+            fix_group,
+            text="Continue After Fix",
             style="Soft.TButton",
             command=self.continue_after_conflict_fix,
-        ).grid(row=1, column=5, padx=(8, 0), pady=(8, 0))
+        ).grid(row=0, column=3, sticky="ew")
 
     def choose_folder(self) -> None:
         folder = filedialog.askdirectory(title="Choose your project folder")
