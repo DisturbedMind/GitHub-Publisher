@@ -11,3 +11,8 @@ README.backup-*.md
 # Python cache
 *.pyc
 *.pyo
+# Old local web prototype leftovers
+app.py
+static/
+github-publisher-gui-web.zip
+dist/*.bak

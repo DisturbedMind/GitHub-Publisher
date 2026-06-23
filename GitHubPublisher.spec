@@ -5,7 +5,7 @@ a = Analysis(
     ['github_publisher_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('assets/wolf-banner.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

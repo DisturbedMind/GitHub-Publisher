@@ -48,6 +48,7 @@ python -m PyInstaller ^
   --windowed ^
   --noconfirm ^
   --name GitHubPublisher ^
+  --add-data "%cd%\assets\wolf-banner.png;assets" ^
   --distpath "%DIST_PATH%" ^
   --workpath "%WORK_PATH%" ^
   --specpath "%SPEC_PATH%" ^

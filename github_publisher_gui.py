@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import queue
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from dataclasses import dataclass
@@ -23,6 +24,9 @@ from tkinter import filedialog, messagebox, ttk
 
 
 APP_TITLE = "GitHub Publisher"
+SCRIPT_DIR = Path(__file__).resolve().parent
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", SCRIPT_DIR))
+LOGO_PATH = RESOURCE_DIR / "assets" / "wolf-banner.png"
 
 
 @dataclass
@@ -35,129 +39,193 @@ class GitHubPublisher(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1120x720")
-        self.minsize(980, 620)
+        self.geometry("1180x760")
+        self.minsize(980, 700)
+        self.configure(bg="#0f172a")
 
         self.repo_path = tk.StringVar()
         self.branch_name = tk.StringVar(value="main")
         self.remote_url = tk.StringVar()
         self.commit_message = tk.StringVar(value="Update project files")
+        self.status_summary = tk.StringVar(value="Ready")
         self.command_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.busy = False
+        self.logo_image: tk.PhotoImage | None = None
+        self.header_logo: tk.PhotoImage | None = None
 
         self._build_ui()
         self._poll_queue()
         self._check_git_available()
 
+    def _load_logo_images(self) -> None:
+        if not LOGO_PATH.exists():
+            return
+        try:
+            self.logo_image = tk.PhotoImage(file=str(LOGO_PATH))
+            self.iconphoto(True, self.logo_image)
+            scale = max(self.logo_image.width() // 220, self.logo_image.height() // 96, 1)
+            self.header_logo = self.logo_image.subsample(scale, scale)
+        except tk.TclError:
+            self.logo_image = None
+            self.header_logo = None
+
     def _build_ui(self) -> None:
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
+        style = ttk.Style()
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        style.configure("App.TFrame", background="#f8fafc")
+        style.configure("Hero.TFrame", background="#0f172a")
+        style.configure("Card.TLabelframe", background="#ffffff", bordercolor="#cbd5e1", relief="solid")
+        style.configure("Card.TLabelframe.Label", background="#ffffff", foreground="#0f172a", font=("Segoe UI", 10, "bold"))
+        style.configure("TLabel", background="#f8fafc", foreground="#1e293b", font=("Segoe UI", 9))
+        style.configure("Muted.TLabel", background="#ffffff", foreground="#64748b")
+        style.configure("HeroTitle.TLabel", background="#0f172a", foreground="#f8fafc", font=("Segoe UI", 22, "bold"))
+        style.configure("HeroSub.TLabel", background="#0f172a", foreground="#99f6e4", font=("Segoe UI", 10))
+        style.configure("Soft.TButton", background="#e5e7eb", foreground="#111827", padding=(10, 6))
+        style.map("Soft.TButton", background=[("active", "#d1d5db")])
 
-        header = ttk.Frame(self, padding=(16, 14, 16, 8))
-        header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(1, weight=1)
+        shell = tk.Frame(self, bg="#0f172a")
+        shell.pack(fill="both", expand=True)
+        self._load_logo_images()
 
-        title = ttk.Label(header, text=APP_TITLE, font=("Segoe UI", 18, "bold"))
-        title.grid(row=0, column=0, sticky="w")
-
-        help_text = (
-            "Pick a project folder, review the changed files, write a commit message, "
-            "then publish to GitHub."
+        hero = ttk.Frame(shell, style="Hero.TFrame", padding=(22, 18, 22, 16))
+        hero.pack(fill="x")
+        hero.columnconfigure(1, weight=1)
+        if self.header_logo is not None:
+            tk.Label(hero, image=self.header_logo, bg="#0f172a", bd=0).grid(
+                row=0, column=0, rowspan=2, sticky="w", padx=(0, 16)
+            )
+        ttk.Label(hero, text=APP_TITLE, style="HeroTitle.TLabel").grid(row=0, column=1, sticky="w")
+        ttk.Label(
+            hero,
+            text="Review local Git changes, set the GitHub remote, commit, and push from one desktop window.",
+            style="HeroSub.TLabel",
+        ).grid(row=1, column=1, sticky="w", pady=(4, 0))
+        ttk.Label(hero, textvariable=self.status_summary, style="HeroSub.TLabel").grid(
+            row=0, column=2, rowspan=2, sticky="e"
         )
-        help_label = ttk.Label(header, text=help_text, foreground="#444")
-        help_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        repo_box = ttk.LabelFrame(self, text="Project Folder", padding=12)
-        repo_box.grid(row=1, column=0, sticky="ew", padx=16, pady=8)
+        container = ttk.Frame(shell, style="App.TFrame", padding=16)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(0, weight=3)
+        container.columnconfigure(1, weight=2)
+        container.rowconfigure(1, weight=1)
+
+        repo_box = ttk.LabelFrame(container, text="Project Folder", style="Card.TLabelframe", padding=12)
+        repo_box.grid(row=0, column=0, sticky="ew", padx=(0, 12), pady=(0, 12))
         repo_box.columnconfigure(1, weight=1)
 
         ttk.Label(repo_box, text="Folder").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(repo_box, textvariable=self.repo_path).grid(row=0, column=1, sticky="ew")
-        ttk.Button(repo_box, text="Browse...", command=self.choose_folder).grid(
+        ttk.Button(repo_box, text="Browse", style="Soft.TButton", command=self.choose_folder).grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Button(repo_box, text="Refresh", command=self.refresh_status).grid(
+        ttk.Button(repo_box, text="Refresh", style="Soft.TButton", command=self.refresh_status).grid(
             row=0, column=3, padx=(8, 0)
         )
 
-        setup_box = ttk.LabelFrame(self, text="Publish Settings", padding=12)
-        setup_box.grid(row=2, column=0, sticky="ew", padx=16, pady=8)
+        setup_box = ttk.LabelFrame(container, text="Publish Settings", style="Card.TLabelframe", padding=12)
+        setup_box.grid(row=0, column=1, sticky="ew", pady=(0, 12))
         setup_box.columnconfigure(1, weight=1)
-        setup_box.columnconfigure(3, weight=1)
 
-        ttk.Label(setup_box, text="Branch").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Label(setup_box, text="Branch").grid(row=0, column=0, sticky="w", pady=5, padx=(0, 8))
         ttk.Entry(setup_box, textvariable=self.branch_name, width=18).grid(
-            row=0, column=1, sticky="ew", padx=(0, 12)
+            row=0, column=1, sticky="ew", pady=5
         )
-        ttk.Label(setup_box, text="Remote URL").grid(row=0, column=2, sticky="w", padx=(0, 8))
-        ttk.Entry(setup_box, textvariable=self.remote_url).grid(row=0, column=3, sticky="ew")
+        ttk.Label(setup_box, text="Remote URL").grid(row=1, column=0, sticky="w", pady=5, padx=(0, 8))
+        ttk.Entry(setup_box, textvariable=self.remote_url).grid(row=1, column=1, sticky="ew", pady=5)
 
         ttk.Label(setup_box, text="Commit Message").grid(
-            row=1, column=0, sticky="w", padx=(0, 8), pady=(10, 0)
+            row=2, column=0, sticky="w", padx=(0, 8), pady=5
         )
         ttk.Entry(setup_box, textvariable=self.commit_message).grid(
-            row=1, column=1, columnspan=3, sticky="ew", pady=(10, 0)
+            row=2, column=1, sticky="ew", pady=5
         )
 
-        main = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        main.grid(row=3, column=0, sticky="nsew", padx=16, pady=8)
-
-        changes_box = ttk.LabelFrame(main, text="Changed Files", padding=10)
+        changes_box = ttk.LabelFrame(container, text="Changed Files", style="Card.TLabelframe", padding=10)
+        changes_box.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
         changes_box.rowconfigure(0, weight=1)
         changes_box.columnconfigure(0, weight=1)
-        self.status_list = tk.Listbox(changes_box, height=12, activestyle="none")
+        self.status_list = tk.Listbox(
+            changes_box,
+            height=12,
+            activestyle="none",
+            bg="#ffffff",
+            fg="#1e293b",
+            selectbackground="#ccfbf1",
+            selectforeground="#0f172a",
+            relief="flat",
+            bd=0,
+            font=("Consolas", 9),
+        )
         self.status_list.grid(row=0, column=0, sticky="nsew")
         changes_scroll = ttk.Scrollbar(changes_box, orient=tk.VERTICAL, command=self.status_list.yview)
         changes_scroll.grid(row=0, column=1, sticky="ns")
         self.status_list.configure(yscrollcommand=changes_scroll.set)
-        main.add(changes_box, weight=1)
 
-        log_box = ttk.LabelFrame(main, text="Command Log", padding=10)
+        log_box = ttk.LabelFrame(container, text="Command Log", style="Card.TLabelframe", padding=10)
+        log_box.grid(row=1, column=1, sticky="nsew")
         log_box.rowconfigure(0, weight=1)
         log_box.columnconfigure(0, weight=1)
-        self.log_text = tk.Text(log_box, wrap=tk.WORD, height=12, state=tk.DISABLED)
+        self.log_text = tk.Text(
+            log_box,
+            wrap=tk.WORD,
+            height=12,
+            state=tk.DISABLED,
+            bg="#111827",
+            fg="#e5e7eb",
+            insertbackground="#e5e7eb",
+            selectbackground="#475569",
+            selectforeground="#ffffff",
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=8,
+            font=("Consolas", 9),
+        )
         self.log_text.grid(row=0, column=0, sticky="nsew")
         log_scroll = ttk.Scrollbar(log_box, orient=tk.VERTICAL, command=self.log_text.yview)
         log_scroll.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=log_scroll.set)
-        main.add(log_box, weight=2)
 
-        actions = ttk.Frame(self, padding=(16, 8, 16, 16))
-        actions.grid(row=4, column=0, sticky="ew")
+        actions = ttk.LabelFrame(container, text="Publish Actions", style="Card.TLabelframe", padding=12)
+        actions.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         actions.columnconfigure(0, weight=1)
 
-        self.state_label = ttk.Label(actions, text="Ready")
+        self.state_label = ttk.Label(actions, textvariable=self.status_summary, style="Muted.TLabel")
         self.state_label.grid(row=0, column=0, rowspan=2, sticky="w")
 
-        ttk.Button(actions, text="1. Initialize Git", command=self.initialize_repo).grid(
+        ttk.Button(actions, text="1. Initialize Git", style="Soft.TButton", command=self.initialize_repo).grid(
             row=0, column=1, padx=(8, 0)
         )
-        ttk.Button(actions, text="2. Set Remote", command=self.set_remote).grid(
+        ttk.Button(actions, text="2. Set Remote", style="Soft.TButton", command=self.set_remote).grid(
             row=0, column=2, padx=(8, 0)
         )
-        ttk.Button(actions, text="3. Pull from GitHub", command=self.pull_changes).grid(
+        ttk.Button(actions, text="3. Pull from GitHub", style="Soft.TButton", command=self.pull_changes).grid(
             row=0, column=3, padx=(8, 0)
         )
         ttk.Button(
             actions,
             text="Fix A. First Upload Pull",
+            style="Soft.TButton",
             command=self.pull_unrelated_changes,
         ).grid(row=0, column=4, padx=(8, 0))
-        ttk.Button(actions, text="Fix B. Show Conflicts", command=self.show_conflicts).grid(
+        ttk.Button(actions, text="Fix B. Show Conflicts", style="Soft.TButton", command=self.show_conflicts).grid(
             row=0, column=5, padx=(8, 0)
         )
-        ttk.Button(actions, text="4. Commit Changes", command=self.commit_changes).grid(
+        ttk.Button(actions, text="4. Commit Changes", style="Soft.TButton", command=self.commit_changes).grid(
             row=1, column=2, padx=(8, 0), pady=(8, 0)
         )
-        ttk.Button(actions, text="5. Push to GitHub", command=self.push_changes).grid(
+        ttk.Button(actions, text="5. Push to GitHub", style="Soft.TButton", command=self.push_changes).grid(
             row=1, column=3, padx=(8, 0), pady=(8, 0)
         )
-        ttk.Button(actions, text="Shortcut 4+5. Commit + Push", command=self.commit_and_push).grid(
+        ttk.Button(actions, text="Shortcut 4+5. Commit + Push", style="Soft.TButton", command=self.commit_and_push).grid(
             row=1, column=4, padx=(8, 0), pady=(8, 0)
         )
         ttk.Button(
             actions,
             text="Fix C. Continue After Fix",
+            style="Soft.TButton",
             command=self.continue_after_conflict_fix,
         ).grid(row=1, column=5, padx=(8, 0), pady=(8, 0))
 
@@ -291,7 +359,7 @@ class GitHubPublisher(tk.Tk):
         if not inside.ok:
             self.status_list.insert(tk.END, "This folder is not a Git repository yet.")
             self.append_log("This folder is not a Git repository yet. Use 1. Initialize Git.")
-            self.state_label.configure(text="Not a Git repository")
+            self.status_summary.set("Not a Git repository")
             return
 
         branch = self.run_git(["branch", "--show-current"], path)
@@ -308,19 +376,19 @@ class GitHubPublisher(tk.Tk):
             for line in status.output.splitlines():
                 self.status_list.insert(tk.END, line)
             if self.has_unmerged_files(status.output):
-                self.state_label.configure(text="Conflicts need fixing")
+                self.status_summary.set("Conflicts need fixing")
                 self.append_log(
                     "Conflicts detected. Click 'Fix B. Show Conflicts', fix the files, then "
                     "click 'Fix C. Continue After Fix'."
                 )
             else:
-                self.state_label.configure(text="Changes found")
+                self.status_summary.set("Changes found")
         elif status.ok:
             self.status_list.insert(tk.END, "No local changes.")
-            self.state_label.configure(text="Clean working tree")
+            self.status_summary.set("Clean working tree")
         else:
             self.status_list.insert(tk.END, status.output or "Unable to read Git status.")
-            self.state_label.configure(text="Status failed")
+            self.status_summary.set("Status failed")
 
     def initialize_repo(self) -> None:
         branch = self.branch_name.get().strip() or "main"
@@ -372,7 +440,7 @@ class GitHubPublisher(tk.Tk):
             self.status_list.delete(0, tk.END)
             for filename in result.output.splitlines():
                 self.status_list.insert(tk.END, f"CONFLICT  {filename}")
-            self.state_label.configure(text="Conflicts need fixing")
+            self.status_summary.set("Conflicts need fixing")
             self.append_log(
                 "\nOpen each listed file and remove conflict markers: <<<<<<<, =======, >>>>>>>. "
                 "Keep the version you want, save the file, then click 'Fix C. Continue After Fix'."
@@ -492,7 +560,7 @@ class GitHubPublisher(tk.Tk):
                 if kind == "log":
                     self.append_log(payload)
                 elif kind == "state":
-                    self.state_label.configure(text=payload)
+                    self.status_summary.set(payload)
                     if payload in {"Ready", "Stopped after an error"}:
                         self.busy = False
                 elif kind == "refresh":
